@@ -1,0 +1,15 @@
+.DS_STORE
+
+.venv
+.ipynb_checkpoints
+__pycache__
+dist
+build
+data
+tmp
+
+*.egg-info
+*.egg
+*.tar.gz
+*.zip
+*.log

@@ -1,0 +1,19 @@
+[project]
+name = "pal"
+dynamic = ["version"]
+description = "A repository of code and data for scientific article https://arxiv.org/abs/2412.04583"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "airball>=0.9.4",
+    "celmech>=1.5.3",
+    "corner==2.2.2",
+    "notebook==7.2.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/pal/__init__.py"

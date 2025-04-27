@@ -1,0 +1,4 @@
+airball==0.9.3
+celmech>=1.5.3
+corner==2.2.2
+notebook==7.2.1

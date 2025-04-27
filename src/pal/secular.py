@@ -6,59 +6,78 @@ import json
 import pickle
 import warnings
 import numpy as np
-from joblib import Parallel, delayed
 from celmech.miscellaneous import frequency_modified_fourier_transform as fmftc
 
 twopi = 2 * np.pi
 
-def logSpectralDistance(P1,P2, outer=True):
-    """The log spectral distance [LSD](https://en.wikipedia.org/wiki/Log-spectral_distance)"""
+
+def logSpectralDistance(P1, P2, outer=True):
+    """
+    The log spectral distance [LSD](https://en.wikipedia.org/wiki/Log-spectral_distance)
+
+    This function assumes that the input are numpy arrays of the same shape.
+    The outer parameter is used to only compare the outer planets if the system has more than 4 planets.
+    """
     tot = 0
     n1 = len(P1)
     n2 = len(P2)
     range1 = [i for i in range(n1)]
     range2 = [i for i in range(n2)]
-    if n1 > 4 and outer==True: range1 = [i for i in range(4,n1)]
-    if n2 > 4 and outer==True: range2 = [i for i in range(4,n2)]
+    if n1 > 4 and outer:
+        range1 = [i for i in range(4, n1)]
+    if n2 > 4 and outer:
+        range2 = [i for i in range(4, n2)]
 
-    if len(range1) != len(range2): raise Exception("Comparison of different number of planets.")
+    if len(range1) != len(range2):
+        raise Exception("Comparison of different number of planets.")
 
-    for i1,i2 in zip(range1, range2):
-        tot += np.sqrt(np.mean((np.log10(np.abs(P1[i1])) - np.log10(np.abs(P2[i2])))**2))
-    return tot/len(range1)
+    for i1, i2 in zip(range1, range2):
+        tot += np.sqrt(
+            np.mean((np.log10(np.abs(P1[i1])) - np.log10(np.abs(P2[i2]))) ** 2)
+        )
+    return tot / len(range1)
+
 
 def metric(SOLAR_SYSTEM, system, outer=True):
     """Using the LSD to define a metric using the eccentricity and inclination secular modes."""
-    if not system.good or np.any(np.isnan(system.zfft)): return np.inf
+    if not system.good or np.any(np.isnan(system.zfft)):
+        return np.inf
     total = logSpectralDistance(SOLAR_SYSTEM.zfft, system.zfft, outer)
     total += logSpectralDistance(SOLAR_SYSTEM.ζfft, system.ζfft, outer)
-    return total/2
+    return total / 2
+
 
 def solar_subset(sec, ssdat, size=2500):
     """Comparing subsets of the secular Solar System data against itself using the metric."""
-    if not sec.good: return [np.inf] * size
+    if not sec.good:
+        return [np.inf] * size
     lset = []
     for s in np.random.choice(ssdat, size=size, replace=False):
         lset.append(metric(s, sec))
     return lset
 
+
 def solar(sec, ssdat):
     """Comparing a secular system too *all* of the secular Solar System data."""
-    if not sec.good: return np.inf * np.ones(len(ssdat))
+    if not sec.good:
+        return np.inf * np.ones(len(ssdat))
     lsol = np.zeros(len(ssdat))
-    for i,s in enumerate(ssdat):
-        lsol[i] = (metric(s, sec))
+    for i, s in enumerate(ssdat):
+        lsol[i] = metric(s, sec)
     return lsol
+
 
 def pkl(filename):
     """Save a pickle file."""
     with open(filename, "wb") as pfile:
         pickle.dump(filename, pfile, protocol=pickle.HIGHEST_PROTOCOL)
 
+
 def unpkl(filename):
     """Load a pickle file."""
     with open(filename, "rb") as pfile:
         return pickle.load(pfile)
+
 
 def extract(filename):
     """Returns n, t, z, ζ, a from a rebound simulation archive file."""
@@ -81,19 +100,19 @@ def extract(filename):
     return n, t, z, ζ, a
 
 
-def fmft(filename, Nfreq, method_flag=3, parallel=True):
-    n, t, z, ζ, a = extract(filename)
-    if parallel:
-        g = Parallel(n_jobs=-1)(delayed(fmftc)(t, z[:, i], Nfreq) for i in range(n))
-        s = Parallel(n_jobs=-1)(delayed(fmftc)(t, ζ[:, i], Nfreq) for i in range(n))
-        return g, s
-    else:
-        g = []
-        s = []
-        for i in range(n):
-            g.append(fmftc(t, z[:, i], Nfreq))
-            s.append(fmftc(t, ζ[:, i], Nfreq))
-        return g, s
+def fmft(filename, Nfreq, method_flag=3):
+    """
+    Returns the Fourier modes of the z and ζ variables from a rebound simulation archive file.
+
+    This function uses the frequency modified Fourier transform (FMFT) written by David Nesvorny and accessed through the celmech package.
+    """
+    n, t, z, ζ, _ = extract(filename)
+    g = []
+    s = []
+    for i in range(n):
+        g.append(fmftc(t, z[:, i], Nfreq, method_flag=method_flag))
+        s.append(fmftc(t, ζ[:, i], Nfreq, method_flag=method_flag))
+    return g, s
 
 
 def plist(arr, end=""):
@@ -101,6 +120,15 @@ def plist(arr, end=""):
 
 
 def secularmodes(fftdecomp, atol=1e-8):
+    """
+    Returns the secular modes and amplitudes from the Fourier decomposition of the z or ζ variables.
+
+    This function assumes that the input is a list of dictionaries, where each dictionary contains the Fourier decomposition of a single planet.
+    The keys of the dictionary are the frequencies and the values are the complex amplitudes.
+    The function returns the secular modes and amplitudes as numpy arrays.
+    The function also assumes that the first frequency in the Fourier decomposition is the fundamental frequency of the planet.
+    The function uses the absolute tolerance to determine if two frequencies are close enough to be considered the same mode.
+    """
     n = len(fftdecomp)
     nf = len(fftdecomp[0])
     f = np.zeros((n, nf))
@@ -137,6 +165,11 @@ def secularmodes(fftdecomp, atol=1e-8):
 
 
 def Smatrix(fftdecomp, rtol=1e-5):
+    """
+    Returns the secular modes, amplitudes, and matrix from the Fourier decomposition of the z or ζ variables.
+
+    Similar to the secularmodes function, but also returns the matrix S which contains how the amplitudes of the different modes are related to each other.
+    """
     n = len(fftdecomp)
     nf = np.max([len(fftdecomp[i]) for i in range(n)])
     f = np.zeros((n, nf))
@@ -202,13 +235,11 @@ def match(modes, target, atol=1e-8):
         return None
 
 
-def pmatch(modes, targets, atol=1e-8):
-    return Parallel(n_jobs=-1)(
-        delayed(match)(modes, targets[i], atol) for i in range(len(targets))
-    )
-
-
 def nAMD(sim, plane="invariable"):
+    """
+    Returns the normalized angular momentum deficit (nAMD) of the system as a numerator and denominator.
+    The nAMD is defined as the difference between the angular momentum of the system and the angular momentum of a circular orbit with the same semi-major axis and mass.
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         s = sim.copy()
@@ -237,6 +268,7 @@ def nAMD(sim, plane="invariable"):
 
 
 def divide_SA_into_Results(filename, index=None, power=2048):
+    """Divide a simulation archive into Results objects."""
     sa = rebound.Simulationarchive(filename)
     N = len(sa)
     sim = sa[0]
@@ -251,7 +283,7 @@ def divide_SA_into_Results(filename, index=None, power=2048):
         warnings.simplefilter("ignore")
         for i in range(N):
             sim = sa[i]
-            sim.integrator_synchronize()
+            sim.synchronize()
             airball.tools.rotate_into_plane(sim)
             t[i] = sim.t
             orbits = sim.orbits()
@@ -292,7 +324,7 @@ class CustomJSONEncoder(json.JSONEncoder):
     # turn complex to str
     def replace_complex(self, value):
         """Replace complex numbers with dicts and numpy arrays with lists.
-        
+
         Adapted from: https://stackoverflow.com/a/56445571
 
         Parameters:
@@ -359,6 +391,13 @@ class CustomJSONDecoder(json.JSONDecoder):
 
 
 class Results:
+    """Class to store the results of a simulation.
+
+    This class is used to store the results of a REBOUND.Simulationarchive in a way that can be easily saved and loaded.
+    The class uses the pickle or json module to save and load the results.
+    The class also uses the CustomJSONEncoder and CustomJSONDecoder classes to handle complex numbers and numpy arrays.
+    """
+
     def __init__(self, load=None):
         self.good = True
         if load is not None:
@@ -390,7 +429,7 @@ class Results:
 
     def stats(self, returned=False):
         """
-        Prints a summary of the current stats of the Stars object.
+        Prints a summary of the current stats of the Results object.
         The stats are returned as a string if `returned=True`.
         """
         s = f"<{self.__module__}.{type(self).__name__} object at {hex(id(self))}, "
@@ -410,6 +449,12 @@ class Results:
     def secular_modes(
         self, SAfilename, Nfreq=None, power=2048, offset=1, fmft=True, warn="default"
     ):
+        """Compute the secular modes of a simulation archive.
+
+        The function uses the frequency modified Fourier transform (FMFT) written by David Nesvorny and accessed through the celmech package.
+        The function also uses the Smatrix function to compute the secular modes and amplitudes.
+        The offset parameter is used to skip the first few simulations in the archive. This is useful if the first simulation is the initial conditions of the system, before the stellar flyby.
+        """
         with warnings.catch_warnings():
             warnings.simplefilter(warn)
             sa = rebound.Simulationarchive(SAfilename)
@@ -429,7 +474,7 @@ class Results:
                     warnings.simplefilter("ignore")
                     for i in range(power):
                         sim = sa[i + offset]
-                        sim.integrator_synchronize()
+                        sim.synchronize()
                         airball.tools.rotate_into_plane(sim)
                         self.t[i] = sim.t
                         orbits = sim.orbits()
@@ -498,6 +543,8 @@ class Results:
 
 
 class SecularResults:
+    """Legacy class for the Results object."""
+
     def __init__(self, load=None):
         self.good = True
         if load is not None:
@@ -567,7 +614,7 @@ class SecularResults:
                 except rebound.Escape as _:
                     self.good = False
                     break
-                sim.integrator_synchronize()
+                sim.synchronize()
                 # self.amd[i] = nAMD(sim)
                 orbits = sim.orbits()
                 for j in range(self.n):
